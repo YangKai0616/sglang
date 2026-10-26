@@ -33,6 +33,34 @@ SGLang Diffusion supports Moore Threads GPUs (MTGPU) through the MUSA software s
 
 SGLang Diffusion supports Apple Silicon (M-series) via the MPS backend. Since Triton is Linux-only, Triton kernels are replaced with PyTorch-native fallbacks on MPS. See the [installation guide](https://docs.sglang.io/docs/sglang-diffusion/installation) for setup instructions.
 
+### Intel XPU ConvRot INT8
+
+On BMG/Xe2, ConvRot INT8 linears use two native `sgl-kernel-xpu` kernels:
+SYCL regular-H256 rotation with per-row INT8 quantization, followed by
+SYCL-TLA INT8 DPAS GEMM with fused scaling, BF16 rounding and optional bias.
+Build/install `sgl-kernel-xpu` with `convrot_rotate_quantize` and
+`convrot_int8_linear_prequant` before running this backend.
+
+`SGLANG_DIFFUSION_CONVROT_INT8_BACKEND=auto` selects `xpu` on XPU;
+set it to `xpu` to request this backend explicitly. This applies both to
+`--quantization convrot_int8` online weight quantization and serialized
+Comfy ConvRot INT8 layers, including the INT8 companion layers in mixed
+NVFP4/INT8 checkpoints. CUDA's JIT/comfy-kitchen selection is unchanged.
+
+Supported parameters/activations are **BF16**, with ConvRot group size 256,
+per-shard K in [256, 8192] divisible by 256, and positive per-shard N
+divisible by 32. Missing native ops, unsupported quantized layers and
+unvalidated FSDP execution fail explicitly; there is no comfy-kitchen,
+Triton or Torch arithmetic fallback for selected XPU ConvRot INT8 linears.
+Online quantization still respects ignored layers and leaves inputs not
+divisible by the rotation group in BF16, as on CUDA. Other quantization
+formats and embedding lookups are not changed by this backend.
+
+The FP32 butterfly rotation is **not bit-exact** with eager dense-matmul
+rotation at BF16 rounding boundaries. Kernel-level synthetic validation is
+not a substitute for model-quality acceptance. CUDA-only shared-input and
+GELU helpers are not enabled for this backend.
+
 ## Getting Started
 
 Docker is recommended for Linux GPU deployments. Follow the [installation guide](https://docs.sglang.io/docs/sglang-diffusion/installation) to start a container with diffusion dependencies included, or choose pip/uv, source installation, or another platform's setup. Run the examples below inside that environment.
